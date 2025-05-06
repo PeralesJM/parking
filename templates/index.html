@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Buscar Aparcamientos Cercanos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"
+  />
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    .leaflet-popup-content {
+      font-size: 14px;
+    }
+    .codigo-label {
+    background-color: white;
+    border: 1px solid #007bff;
+    color: #ff004c;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.598622, -0.981955], 14); 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  
+    let markerUsuario = null;
+    let markersAparcamientos = [];
+    let pollingInterval = null;
+  
+    function limpiarMarcadores() {
+      markersAparcamientos.forEach(m => map.removeLayer(m));
+      markersAparcamientos = [];
+    }
+  
+    async function cargarAparcamientos(lat, lng) {
+      try {
+        const res = await fetch(`/cercanos?lat=${lat}&lon=${lng}`);
+        const aparcamientos = await res.json();
+  
+        limpiarMarcadores();
+  
+        if (Array.isArray(aparcamientos)) {
+          aparcamientos.forEach(p => {
+            const m = L.marker([p.latitud, p.longitud])
+              .addTo(map)
+              .bindPopup(`
+                <strong>Código:</strong> ${p.codigo}<br>
+                <strong>Calle:</strong> ${p.calle}<br>
+                <strong>Distancia:</strong> ${p.distancia} m
+              `)
+              .bindTooltip(p.codigo, { permanent: true, direction: 'top', offset: [0, -10], className: 'codigo-label' });
+            markersAparcamientos.push(m);
+          });
+        } else {
+          alert("Error en la respuesta del servidor: " + aparcamientos.error);
+        }
+      } catch (error) {
+        console.error("Error al obtener aparcamientos:", error);
+      }
+    }
+  
+    function iniciarBusquedaContinua(lat, lng) {
+      // Limpiar búsqueda anterior
+      if (pollingInterval) clearInterval(pollingInterval);
+  
+      // Hacer la primera carga inmediatamente
+      cargarAparcamientos(lat, lng);
+  
+      // Repetir cada 10 segundos
+      pollingInterval = setInterval(() => {
+        cargarAparcamientos(lat, lng);
+      }, 10000);
+    }
+  
+    map.on('click', function (e) {
+      const { lat, lng } = e.latlng;
+  
+      // Mover o crear el marcador del usuario
+      if (markerUsuario) {
+        markerUsuario.setLatLng([lat, lng]);
+      } else {
+        markerUsuario = L.marker([lat, lng], { draggable: true }).addTo(map);
+      }
+  
+      iniciarBusquedaContinua(lat, lng);
+    });
+  </script>
+  
+</body>
+</html>
