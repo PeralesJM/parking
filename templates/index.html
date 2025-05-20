@@ -53,7 +53,7 @@
   
     async function cargarAparcamientos(lat, lng) {
       try {
-        const res = await fetch(`/cercanos?lat=${lat}&lon=${lng}`);
+        const res = await fetch("/cercanos?lat=" + lat + "&lon=" + lng);
         const aparcamientos = await res.json();
   
         limpiarMarcadores();
@@ -77,33 +77,95 @@
         console.error("Error al obtener aparcamientos:", error);
       }
     }
-  
     function iniciarBusquedaContinua(lat, lng) {
       // Limpiar búsqueda anterior
       if (pollingInterval) clearInterval(pollingInterval);
-  
       // Hacer la primera carga inmediatamente
       cargarAparcamientos(lat, lng);
-  
       // Repetir cada 10 segundos
       pollingInterval = setInterval(() => {
         cargarAparcamientos(lat, lng);
       }, 10000);
     }
-  
-    map.on('click', function (e) {
-      const { lat, lng } = e.latlng;
-  
-      // Mover o crear el marcador del usuario
-      if (markerUsuario) {
-        markerUsuario.setLatLng([lat, lng]);
-      } else {
-        markerUsuario = L.marker([lat, lng], { draggable: true }).addTo(map);
-      }
-  
-      iniciarBusquedaContinua(lat, lng);
-    });
+    const rutaActual = window.location.pathname;
+
+    // Comportamiento para /buscar
+    if (rutaActual === "/buscar") {
+      map.on("click", function (e) {
+        const { lat, lng } = e.latlng;
+        if (markerUsuario) {
+          markerUsuario.setLatLng([lat, lng]);
+        } else {
+          markerUsuario = L.marker([lat, lng], { draggable: true }).addTo(map);
+        }
+        iniciarBusquedaContinua(lat, lng);
+      });
+    }
+
+    // Comportamiento para /grabar
+    if (rutaActual === "/grabar") {
+      fetch("/todos")
+        .then(res => res.json())
+        .then(aparcamientos => {
+          limpiarMarcadores();
+          aparcamientos.forEach(p => {
+            const m = L.marker([p.latitud, p.longitud])
+              .addTo(map)
+              .bindPopup(`
+                <strong>Código:</strong> ${p.codigo}<br>
+                <strong>Calle:</strong> ${p.calle}<br>
+                <strong>Estado:</strong> ${p.estado}
+              `)
+              .bindTooltip(p.codigo, {
+                permanent: true,
+               direction: 'top',
+                offset: [0, -10],
+                className: 'codigo-label'
+              });
+            markersAparcamientos.push(m);
+          });
+        })
+        .catch(error => {
+          console.error("Error al cargar aparcamientos:", error);
+        });
+      map.on("contextmenu", async function (e) {
+        const lat = e.latlng.lat;
+        const lon = e.latlng.lng;
+        const codigo = prompt("Introduce el CÓDIGO del aparcamiento:");
+        if (codigo === null || codigo.trim() === "") return;
+        const calle = prompt("Introduce la CALLE del aparcamiento:");
+        if (calle === null || calle.trim() === "") return;
+        try {
+          const response = await fetch("/grabar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ latitud: lat, longitud: lon, codigo, calle })
+          });
+          const data = await response.json();
+          if (response.ok) {
+            alert("Aparcamiento guardado con éxito");
+            const nuevoMarker = L.marker([lat, lon])
+                .addTo(map)
+                .bindPopup(`
+                    <strong>Código:</strong> ${codigo}<br>
+                   <strong>Calle:</strong> ${calle}
+                `)
+                .bindTooltip(codigo, {
+                  permanent: true,
+                  direction: 'top',
+                  offset: [0, -10],
+                  className: 'codigo-label'
+                });
+                markersAparcamientos.push(nuevoMarker);
+          } else {
+            alert("Error al guardar: " + data.error);
+          }
+        } catch (error) {
+          alert("Error de conexión al servidor");
+          console.error(error);
+        }
+      });
+    }
   </script>
-  
 </body>
 </html>
